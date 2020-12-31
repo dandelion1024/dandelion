@@ -1,7 +1,7 @@
 #include "kmp.h"
-#include <stdbool.h>
 #include <malloc.h>
-   
+#include <stdbool.h>
+
 void get_next(int* next, const char pattern[], int pattern_len)
 {
     int j = 0, k = -1;
@@ -51,6 +51,6 @@ int kmp(const char str[], int len, char pattern[], int pattern_len, int* next)
     if (j >= pattern_len) {
         return i - pattern_len;
     }
-    
+
     return -1;
 }
