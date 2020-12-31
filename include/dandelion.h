@@ -3,7 +3,7 @@
 
 #include "request.h"
 
-#define SERVER_STRING "Server idlehttpd/0.1.0\r\n"
+#define SERVER_STRING "Server Dandelion/0.1.0\r\n"
 void startup();
 void stop();
 void halt(int signo);

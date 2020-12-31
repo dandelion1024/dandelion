@@ -1,3 +1,6 @@
+#ifndef _REQUEST_H
+#define _REQUEST_H
+
 #include <pthread.h>
 #include <netinet/in.h>
 #include <stdbool.h>
@@ -40,3 +43,5 @@ void append_req(Request* req_list, Request* req);
 void clear_all_reqs(Request* req_list);
 
 void output_req_info(Request* req);
+
+#endif
