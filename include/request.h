@@ -16,7 +16,7 @@ struct Request {
     int remote_port;
 
     enum ReqMethod method;
-    char path[500];
+    char path[480];
     char real_path[512];
     char query_string[256];
     char protocol[16];

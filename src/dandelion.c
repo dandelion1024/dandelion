@@ -19,6 +19,8 @@ int server_sock = -1;
 unsigned short server_port = 0;
 struct sockaddr_in server_sockaddr_in;
 Request* req_list = NULL;
+char doc_root[31] = "www";
+char cgi_root[31] = "cgi-bin";
 
 int main(int argc, char* argv[])
 {
@@ -90,11 +92,15 @@ void* accept_request(void* param)
         FINISH_REQ(req)
     }
 
-    strcat(req->real_path, "www");
-    strcat(req->real_path, req->path);
+    if (req->path[strlen(req->path) - 1] == '/') {
+        req->path[strlen(req->real_path) - 1] = '\0';
+    }
 
-    if (req->real_path[strlen(req->real_path) - 1] == '/') {
-        req->real_path[strlen(req->real_path) - 1] = '\0';
+    sprintf(req->real_path, "%s%s", doc_root, req->path);
+
+    // if not static file
+    if (req->is_cgi || access(req->real_path, F_OK) == -1) {
+        sprintf(req->real_path, "%s%s", cgi_root, req->path);
     }
 
     struct stat st;
@@ -120,7 +126,7 @@ void* accept_request(void* param)
 
     numchars = get_line(req->client_sock, buf, sizeof(buf));
 
-    char ch, i, j;
+    char ch;
     req->content_length = -1;
     while (numchars > 0 && strcmp("\n", buf) != 0) {
         // get content_len
@@ -145,6 +151,10 @@ void* accept_request(void* param)
     if (!req->is_cgi) {
         handle_static(req);
     } else {
+        if (req->content_length == -1) {
+            bad_request(req);
+            FINISH_REQ(req)
+        }
         handle_cgi(req);
     }
 
@@ -220,6 +230,7 @@ void handle_req_line(char* buf, size_t buf_size, Request* req)
         ++i;
         ++j;
     }
+
     req->protocol[i] = '\0';
 }
 
@@ -233,7 +244,6 @@ void handle_static(Request* req)
     }
 
     char* r = &req->real_path[strlen(req->real_path)];
-
     char content_type[127] = "";
 
     if (!strcmp(r - 4, ".gif")) {
@@ -250,12 +260,13 @@ void handle_static(Request* req)
         strcat(content_type, "text/plain");
     }
 
-
     char buf[1024];
 
-    sprintf(buf, "HTTP/1.0 200 OK\r\n");
+    strcpy(buf, "HTTP/1.0 200 OK\r\n");
     send(req->client_sock, buf, strlen(buf), 0);
-    sprintf(buf, "Content-Type: %s", content_type);
+    sprintf(buf, "Content-Type: %s\r\n", content_type);
+    send(req->client_sock, buf, strlen(buf), 0);
+    strcpy(buf, "\r\n");
     send(req->client_sock, buf, strlen(buf), 0);
 
     fgets(buf, sizeof(buf), fp);
@@ -269,14 +280,7 @@ void handle_static(Request* req)
 
 void handle_cgi(Request* req)
 {
-    char buf[1024];
-
-    if (req->content_length == -1) {
-        bad_request(req);
-        return;
-    }
-
-
+    //char buf[1024];
 }
 
 void startup()
@@ -294,21 +298,20 @@ void startup()
     server_sockaddr_in.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (bind(server_sock, (struct sockaddr*)&server_sockaddr_in, sockaddr_in_len) < 0) {
-        exit(0);
+        stop();
     }
 
     if (server_port == 0) {
         if (getsockname(server_sock, (struct sockaddr*)&server_sockaddr_in, &sockaddr_in_len) == -1) {
-            exit(0);
+            stop();
         }
 
         server_port = ntohs(server_sockaddr_in.sin_port);
     }
 
     if (listen(server_sock, 5) < 0) {
-        char msg[32];
-        sprintf(msg, "listen port %u failed", server_port);
-        exit(0);
+        printf("listen port %u failed\n", server_port);
+        stop();
     }
 }
 
