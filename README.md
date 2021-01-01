@@ -43,7 +43,3 @@ Make a directory called `www` in the same level directory of the executable file
 
 Then just run `./dandelion`. The server will start.
 
-## Tips
-
---Note: The CGI parsing is not implemented!--
-
