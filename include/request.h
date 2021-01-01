@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 enum ReqMethod {
     M_GET,
@@ -16,6 +17,7 @@ struct Request {
     int client_sock;
     struct sockaddr_in client_sockaddr_in;
     pthread_t thread_id;
+    pid_t pid;
     int remote_port;
 
     enum ReqMethod method;
@@ -24,7 +26,7 @@ struct Request {
     char query_string[256];
     char protocol[16];
 
-    char content_type[64];
+    char content_type[32];
     int content_length;
     char* cookie;
 
@@ -41,7 +43,6 @@ struct Request {
 Request* alloc_req();
 void append_req(Request* req_list, Request* req);
 void clear_all_reqs(Request* req_list);
-
 void output_req_info(Request* req);
 
 #endif

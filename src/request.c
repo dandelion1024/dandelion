@@ -56,7 +56,9 @@ void output_req_info(Request* req)
     }
 
     printf("path: %s\n", req->path);
+    printf("real_path: %s\n", req->real_path);
     printf("query_string: %s\n", req->query_string);
     printf("protocol: %s\n", req->protocol);
+    printf("content_length: %d\n", req->content_length);
     printf("\n");
 }

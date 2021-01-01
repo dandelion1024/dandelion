@@ -6,8 +6,7 @@ Dandelion is a tiny http/1.0 server, mainly developed for embedded web system. I
 
 ## Compiling
 
-The build is CMake-based, so you need to install `cmake` first.
-
+The build is CMake-based, so you need to install `cmake` first.  
 For debian/ubuntu:
 ```bash
 sudo apt install cmake
@@ -46,5 +45,5 @@ Then just run `./dandelion`. The server will start.
 
 ## Tips
 
-Note: The CGI parsing is not implemented!
+--Note: The CGI parsing is not implemented!--
 

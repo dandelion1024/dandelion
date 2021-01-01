@@ -18,5 +18,6 @@ void unimplemented(Request* req);
 void not_found(Request* req);
 void no_permission(Request* req);
 void bad_request(Request* req);
+void cannot_execute(Request* req);
     
 #endif

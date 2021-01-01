@@ -8,11 +8,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
-#define FINISH_REQ(req)      \
-    req->is_finish = true;   \
-    close(req->client_sock); \
+#define FINISH_REQ(req)                                                                 \
+    req->is_finish = true;                                                              \
+    close(req->client_sock);                                                            \
     return NULL;
 
 int server_sock = -1;
@@ -37,7 +38,8 @@ int main(int argc, char* argv[])
             stop();
         }
 
-        req->client_sock = accept(server_sock, (struct sockaddr*)&req->client_sockaddr_in, &sockaddr_in_len);
+        req->client_sock = accept(
+            server_sock, (struct sockaddr*)&req->client_sockaddr_in, &sockaddr_in_len);
 
         if (req->client_sock == -1) {
             free(req);
@@ -57,10 +59,7 @@ int main(int argc, char* argv[])
     return 0;
 }
 
-void halt(int signo)
-{
-    stop();
-}
+void halt(int signo) { stop(); }
 
 void stop()
 {
@@ -81,7 +80,6 @@ void* accept_request(void* param)
     int numchars = get_line(req->client_sock, buf, sizeof(buf));
 
     handle_req_line(buf, sizeof(buf), req);
-    output_req_info(req);
 
     if (req->method != M_GET && req->method != M_POST) {
         while (numchars > 0 && strcmp("\n", buf)) {
@@ -124,10 +122,14 @@ void* accept_request(void* param)
         req->is_cgi = true;
     }
 
+    char ch;
+
     numchars = get_line(req->client_sock, buf, sizeof(buf));
 
-    char ch;
-    req->content_length = -1;
+    if (req->is_cgi) {
+        req->content_length = -1;
+    }
+
     while (numchars > 0 && strcmp("\n", buf) != 0) {
         // get content_len
         ch = buf[15];
@@ -152,8 +154,12 @@ void* accept_request(void* param)
         handle_static(req);
     } else {
         if (req->content_length == -1) {
-            bad_request(req);
-            FINISH_REQ(req)
+            if (req->method == M_POST) {
+                bad_request(req);
+                FINISH_REQ(req)
+            } else {
+                req->content_length = 0;
+            }
         }
         handle_cgi(req);
     }
@@ -280,7 +286,77 @@ void handle_static(Request* req)
 
 void handle_cgi(Request* req)
 {
-    //char buf[1024];
+    int cgi_input[2];
+    int cgi_output[2];
+
+    if (pipe(cgi_output) < 0 || pipe(cgi_input) < 0) {
+        cannot_execute(req);
+        return;
+    }
+
+    if ((req->pid = fork()) < 0) {
+        cannot_execute(req);
+        return;
+    }
+
+    /*
+     * Request: Parent process read from sock and write to cgi_input[1]
+     * then the child process read from cgi_input[0];
+     *
+     * Reponse: The child process write data to cgi_output[1],
+     * then parent process read from cgi_output[0] and send to sock.
+     */
+
+    char c;
+    int status;
+
+    if (req->pid) { // parent process
+        close(cgi_output[1]);
+        close(cgi_input[0]);
+
+        if (req->method == M_POST) {
+            for (int i = 0; i < req->content_length; ++i) {
+                recv(req->client_sock, &c, 1, 0);
+                write(cgi_input[1], &c, 1);
+            }
+        }
+
+        while (read(cgi_output[0], &c, 1) > 0) {
+            send(req->client_sock, &c, 1, 0);
+        }
+
+        close(cgi_output[0]);
+        close(cgi_input[1]);
+        waitpid(req->pid, &status, 0);
+    } else { // child process
+        char meth_env[32];
+        char query_env[270];
+        char type_env[45];
+        char length_env[32];
+
+        dup2(cgi_output[1], 1);
+        dup2(cgi_input[0], 0);
+
+        close(cgi_output[0]);
+        close(cgi_input[1]);
+
+        sprintf(type_env, "CONTENT_TYPE=%s", req->content_type);
+        putenv(type_env);
+
+        if (req->method == M_GET) { // GET
+            sprintf(meth_env, "REQUEST_METHOD=GET");
+            sprintf(query_env, "QUERY_STRING=%s", req->query_string);
+            putenv(query_env);
+        } else {
+            sprintf(length_env, "CONTENT_LENGTH=%d", req->content_length);
+            putenv(length_env);
+        }
+
+        putenv(meth_env);
+
+        execl(req->real_path, req->real_path, req->query_string, NULL);
+        exit(0);
+    }
 }
 
 void startup()
@@ -302,7 +378,9 @@ void startup()
     }
 
     if (server_port == 0) {
-        if (getsockname(server_sock, (struct sockaddr*)&server_sockaddr_in, &sockaddr_in_len) == -1) {
+        if (getsockname(
+                server_sock, (struct sockaddr*)&server_sockaddr_in, &sockaddr_in_len)
+            == -1) {
             stop();
         }
 
@@ -449,4 +527,18 @@ void bad_request(Request* req)
     send(req->client_sock, buf, sizeof(buf), 0);
     sprintf(buf, "such as a POST without a Content-Length.</p>\r\n");
     send(req->client_sock, buf, sizeof(buf), 0);
+}
+
+void cannot_execute(Request* req)
+{
+    char buf[1024];
+
+    sprintf(buf, "HTTP/1.0 500 Internal Server Error\r\n");
+    send(req->client_sock, buf, strlen(buf), 0);
+    sprintf(buf, "Content-type: text/html\r\n");
+    send(req->client_sock, buf, strlen(buf), 0);
+    sprintf(buf, "\r\n");
+    send(req->client_sock, buf, strlen(buf), 0);
+    sprintf(buf, "<P>Error prohibited CGI execution.\r\n");
+    send(req->client_sock, buf, strlen(buf), 0);
 }
